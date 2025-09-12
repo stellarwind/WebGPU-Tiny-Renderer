@@ -314,6 +314,8 @@ export class Material {
                 ]);
                 const texView = texture.textureHandle.createView();
                 const sampler = getDevice().createSampler({
+                    addressModeU: "repeat", 
+                    addressModeV: "repeat",
                     magFilter: "linear",
                     minFilter: "linear",
                 });

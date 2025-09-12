@@ -83,7 +83,7 @@ export class WebGPURenderer {
             },
         });
 
-        this.simpleOrbitCam.orbitQuat(this.input.x * deltaTime, this.input.y * deltaTime, this.input.scrollDelta);
+        this.simpleOrbitCam.orbitQuat(this.input.x * deltaTime * 50, this.input.y * deltaTime * 50, this.input.scrollDelta);
         const [projectionMatrix, viewMatrix] = this.simpleOrbitCam.update();
 
         const dirlightBuffer = getBuffer("dirLight");

@@ -26,7 +26,7 @@ export class Camera extends Entity {
         this.near = Math.max(0.001, value);
     }
 
-    private far = 1000.0;
+    private far = 10000.0;
 
     public set setFar(value: number) {
         this.far = Math.max(this.near + 0.001, value);

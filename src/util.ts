@@ -15,3 +15,11 @@ export const alignByteOffset = (offset: number, alignment: number): number => {
 export const lerp = (a: number, b: number, t: number): number => {
     return a + (b - a) * t;
 };
+
+export function createPaddedArrayBuffer(view: ArrayBufferView): ArrayBuffer {
+  const src = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  const paddedLength = alignByteOffset(src.length, 4);
+  const out = new ArrayBuffer(paddedLength);
+  new Uint8Array(out).set(src); 
+  return out;
+}

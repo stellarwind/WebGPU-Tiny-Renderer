@@ -1,7 +1,50 @@
+import { Material } from "./material";
+// @ts-ignore
+import { createLitMaterial, createUnlitMaterial } from "./material-library";
 import { Mesh } from "./mesh";
 
+export interface LoadedScene {
+    meshes: Mesh[];
+    materials: Material[];
+}
+
+function getAccessorData(gltf: any, accessorIndex: number, arrayBuffer: ArrayBuffer): any {
+    const accessor = gltf.accessors[accessorIndex];
+    const bufferView = gltf.bufferViews[accessor.bufferView];
+    
+    const componentTypeMap: Record<number, any> = {
+        5120: Int8Array,
+        5121: Uint8Array,
+        5122: Int16Array,
+        5123: Uint16Array,
+        5125: Uint32Array,
+        5126: Float32Array,
+    };
+
+    const typedArray = componentTypeMap[accessor.componentType];
+
+    const numComponentsMap: Record<string, number> = {
+        "SCALAR": 1,
+        "VEC2": 2,
+        "VEC3": 3,
+        "VEC4": 4,
+        "MAT4": 16
+    }
+    const numComponents = numComponentsMap[accessor.type];
+
+    // Important -- Sponza has various offsets
+    const byteOffset = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+
+    return new typedArray(
+        arrayBuffer,
+        byteOffset,
+        accessor.count * numComponents
+    );
+}
+
 export class GLTFLoader {
-    public static async loadFile(fileName: string): Promise<Mesh> {
+
+    public static async loadScene(fileName: string): Promise<LoadedScene> {
         const file = await fetch(fileName);
 
         if (!file.ok)
@@ -11,77 +54,80 @@ export class GLTFLoader {
 
         const gltf = await file.json();
 
-        const mesh = gltf.meshes[0]; //TODO read all meshes
-        const primitive = mesh.primitives[0];
-        const positionAccessorIndex = primitive.attributes.POSITION;
-        const positionAccessor = gltf.accessors[positionAccessorIndex];
-
-        const bufferView = gltf.bufferViews[positionAccessor.bufferView];
-        const buffer = gltf.buffers[bufferView.buffer];
-
+        const buffer = gltf.buffers[0];
         const binResponse = await fetch("./mesh/" + buffer.uri);
         const arrayBuffer = await binResponse.arrayBuffer();
 
-        const byteOffset = bufferView.byteOffset;
-        // const byteLength = bufferView.byteLength;
-        const numComponents = positionAccessor.type === "VEC3" ? 3 : 2;
+        const meshes: Mesh[] = [];
+        const materials: Material[] = [];
 
-        // https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#accessor-data-types
-        // 5126 for Float32
-        const vertexData = new Float32Array(
-            arrayBuffer,
-            byteOffset,
-            positionAccessor.count * numComponents
-        );
+        const traverseNode = (nodeIndex: number) => {
+            const node = gltf.nodes[nodeIndex];
 
-        // UVs
-        const uvAccessorIndex = primitive.attributes.TEXCOORD_0;
-        const uvAccessor = gltf.accessors[uvAccessorIndex];
-        const uvBufferView = gltf.bufferViews[uvAccessor.bufferView];
+            if (node.mesh !== undefined) {
+                const meshDef = gltf.meshes[node.mesh];
+                for (const primitive of meshDef.primitives) {
 
-        const uvByteOffset = uvBufferView.byteOffset;
-        const uvNumComponents = 2;
+                    const vertexData = getAccessorData(gltf, primitive.attributes.POSITION, arrayBuffer);
 
-        const uvData = new Float32Array(
-            arrayBuffer,
-            uvByteOffset,
-            uvAccessor.count * uvNumComponents
-        );
+                    const nrmData = primitive.attributes.NORMAL !== undefined ? getAccessorData(gltf, primitive.attributes.NORMAL, arrayBuffer) : null;
 
-        // Normals
-        const nrmAccessorIndex = primitive.attributes.NORMAL;
-        const nrmAccessor = gltf.accessors[nrmAccessorIndex];
-        const nrmBufferView = gltf.bufferViews[nrmAccessor.bufferView];
+                    const uvData = primitive.attributes.TEXCOORD_0 !== undefined ? getAccessorData(gltf, primitive.attributes.TEXCOORD_0, arrayBuffer) : null;
 
-        const nrmByteOffset =nrmBufferView.byteOffset;
-        const nrmNumComponents = 3;
+                    const indexData = primitive.indices !== undefined ? getAccessorData(gltf, primitive.indices, arrayBuffer) : null;
 
-        const nrmData = new Float32Array(
-            arrayBuffer,
-            nrmByteOffset,
-            nrmAccessor.count * nrmNumComponents
-        );
+                    const meshData = new Mesh(
+                        vertexData,
+                        indexData,
+                        null,
+                        nrmData,
+                        uvData,
+                        primitive.material ?? null
+                    );
+                    
+                    meshes.push(meshData);
+                }
+            }
 
-        // INDICES
-        const indexPrimitive = primitive.indices;
+            if (node.children) {
+                node.children.forEach((childIdx: number) =>
+                    traverseNode(childIdx)
+                );
+            }
+        };
 
-        const indexAccessor = gltf.accessors[indexPrimitive];
-        const indexBufferView = gltf.bufferViews[indexAccessor.bufferView];
-        const indexByteOffset = indexBufferView.byteOffset;
+        const scene = gltf.scenes[gltf.scene];
+        scene.nodes.forEach((nodeIndex: number) => traverseNode(nodeIndex));
 
-        // const componentType = indexAccessor.componentType;
+        // Textures
+        let textures = [];
+        let images = [];
+        if (gltf.images !== undefined && gltf.textures !== undefined) {
+            for (const img of gltf.images) {
+                const uri = "./mesh/" + img.uri;
+                images.push(uri);
+            }
 
-        // 5123 ushort, 5125 = uint
-        const indexData = new Uint16Array(
-            arrayBuffer,
-            indexByteOffset,
-            indexAccessor.count
-        );
+            for (const tex of gltf.textures) {
+                textures.push(images[tex.source]);
+            }
+        }
 
-        const meshData = new Mesh(vertexData, indexData, null, nrmData, uvData);
+        // Create materials, assign textures
+        for (const mesh of meshes) {
+            mesh.material = await createLitMaterial();
+            if (mesh.gltfMaterialIndex !== null) {
+                const matDef = gltf.materials[mesh.gltfMaterialIndex];
+                const baseColorTex = matDef.pbrMetallicRoughness?.baseColorTexture ?? null;
+                if (baseColorTex) {
+                    const texUri = textures[baseColorTex.index];
+                    if (texUri) {
+                        await mesh.material.setTexture("albedo", texUri);
+                    }
+                }
+            }
+        }
 
-        return new Promise((resolve) => {
-            resolve(meshData);
-        });
+        return { meshes, materials };
     }
 }
