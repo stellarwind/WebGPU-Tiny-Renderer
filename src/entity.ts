@@ -11,13 +11,9 @@ export abstract class Entity {
 
     public name: string = "";
 
-    private static id_: number = 0;
-    public get id() {
-        return Entity.id_;
-    }
+    public readonly id: string = crypto.randomUUID();
 
     constructor(name: string = "New Entity") {
-        Entity.id_++;
         this.name = name;
     }
 }
