@@ -10,5 +10,9 @@ fn main_frag(
 
         finalColor = textureSample(albedo, albedo_sampler, uv) * scalars.testcolor;
 
+        if (finalColor.a == 0.0) {
+            discard;
+        }
+
         return finalColor;
 }

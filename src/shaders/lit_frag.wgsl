@@ -9,12 +9,17 @@ fn main_frag(
         let ambient: vec3f = vec3f (0.06, 0.06, 0.06);
         var finalColor: vec4f;
 
+        let albedoColor = textureSample(albedo, albedo_sampler, uv);
+        if (albedoColor.a == 0.0) {
+            discard;
+        }
+
         let viewDir = normalize( worldPos - mainCam.position);
         let diffuse: vec3f = computeDiffuse(fragNrm, dirLight.forward, dirLight.color, dirLight.intensity);
 
         let specular: f32 = computeSpecular(viewDir, fragNrm, dirLight.forward, 16);
 
-        finalColor = textureSample(albedo, albedo_sampler, uv) * vec4f(diffuse + ambient, 1) + specular;
+        finalColor = albedoColor * vec4f(diffuse + ambient, 1) + specular;
 
         return finalColor;
 }
