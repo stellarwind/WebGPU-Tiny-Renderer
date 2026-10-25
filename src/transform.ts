@@ -26,6 +26,10 @@ export class Transform {
         this.dirty = true;
     }
 
+    public setModelMatrix(matrix: Mat4) {
+        mat4.copy(matrix, this.modelMatrix_);
+    }
+
     public get scale() {
         return [...this.scale_];
     }

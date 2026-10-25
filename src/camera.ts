@@ -1,17 +1,9 @@
-import { Mat4, mat4, quat, utils, vec3} from "wgpu-matrix";
+import { Mat4, mat4 } from "wgpu-matrix";
 import { defaultSettings } from "./settings";
-import { clamp } from "./util";
 import { Entity } from "./entity";
+import type { CameraController } from "./camera-controller";
 
 export class Camera extends Entity {
-    private pitchAngle: number = 0;
-    private yawAngle: number = 0;
-
-    private distance: number = 6;
-    private maxDist: number = 100;
-    private minDist: number = 0.5;
-    private zoomSpeed: number = 0.01;
-
     private fov: number = (60 * Math.PI) / 180;
 
     public set setFOV(value: number) {
@@ -34,47 +26,28 @@ export class Camera extends Entity {
 
     private projectionMatrix = mat4.perspective(this.fov, this.aspect, this.near, this.far); // Actually [-zNear -> -zFar]
 
-    private readonly up = vec3.fromValues(0, 1, 0);
-
+    private controller: CameraController | null = null;
     private viewMatrix = mat4.identity();
 
-    public orbitEuler(yaw: number, pitch: number, distance: number) {
-        const cameraMatrix = mat4.identity();
-        mat4.rotateY(cameraMatrix, yaw, cameraMatrix);
-        mat4.rotateX(cameraMatrix, pitch, cameraMatrix);
-        mat4.translate(cameraMatrix, [0, 0, distance], cameraMatrix);
-        this.viewMatrix = mat4.invert(cameraMatrix);
+    public attachController(controller: CameraController | null) {
+        this.controller = controller;
     }
 
-    public orbitQuat(yaw: number, pitch: number, distance: number) {
-        this.distance += distance * this.zoomSpeed;
-        this.distance = clamp(this.distance, this.minDist, this.maxDist);
-
-        this.yawAngle += utils.degToRad(yaw);
-        this.pitchAngle += utils.degToRad(pitch);
-
-        
-        const quatYaw = quat.fromAxisAngle(this.up, this.yawAngle);
-        const quatPitch = quat.fromAxisAngle([1, 0, 0], this.pitchAngle);
-        const transformQuat = quat.multiply(quatYaw, quatPitch);
-        
-        const cameraMatrix = mat4.fromQuat(transformQuat);
-        mat4.translate(cameraMatrix, [0, 0, this.distance], cameraMatrix);
-        this.viewMatrix = mat4.invert(cameraMatrix);
-
-        this.transform.rotate(this.pitchAngle, this.yawAngle, 0); // Sync our transform
-        this.transform.translate(cameraMatrix[12], cameraMatrix[13], cameraMatrix[14]); // translation column
+    public update(deltaTime: number) {
+        if (this.controller) {
+            this.transform.setModelMatrix(this.controller.update(deltaTime));
+        }
+        mat4.invert(this.transform.modelMatrix, this.viewMatrix);
     }
 
-    public update(): [Mat4, Mat4] {
+    public get matrices(): [Mat4, Mat4] {
         return [this.projectionMatrix, this.viewMatrix];
     }
 
     public get shaderData(): Float32Array {
-        const forward = this.transform.forward;
-        const pos = this.transform.position;
+        const modelMatrix = this.transform.modelMatrix;
         return new Float32Array([
-            forward[0], forward[1], forward[2], 0, 
-            pos[0], pos[1], pos[2], 0]); 
+            -modelMatrix[8], -modelMatrix[9], -modelMatrix[10], 0,
+            modelMatrix[12], modelMatrix[13], modelMatrix[14], 0]);
     }
 }

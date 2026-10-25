@@ -2,7 +2,6 @@ import { getDevice, getQueue, getDepthTextureView, initResources } from "./globa
 import { Entity } from "./entity";
 import { defaultSettings } from "./settings";
 import { Camera } from "./camera";
-import { Input } from "./input";
 import { MeshEntity } from "./mesh-entity";
 import { LightEntity, LightType } from "./light";
 import { dummyDirLight } from "./light-manager";
@@ -21,12 +20,6 @@ export class WebGPURenderer {
         return this.lightEntityList.find((e) => e.type === LightType.Directional) ?? dummyDirLight;
     }
 
-    private lastFrameMS: number = Date.now();
-
-    private simpleOrbitCam!: Camera;
-
-    private input!: Input;
-
     public async init(canvasId: string) {
         await initResources();
         const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
@@ -38,7 +31,6 @@ export class WebGPURenderer {
         console.log("GPU Device initialized", getDevice());
 
         this.canvasFormat = navigator.gpu.getPreferredCanvasFormat();
-        this.input = new Input("viewport");
 
         this.context = canvas.getContext("webgpu");
         if (this.context == null) return;
@@ -48,19 +40,13 @@ export class WebGPURenderer {
             format: this.canvasFormat,
         });
 
-        this.simpleOrbitCam = new Camera();
-
         createBuffer("camera", 32); // vec3 + pad0 + vec3 + pad1
         createBuffer("dirLight", 32); // vec3 + float32 + vec3 + pad0
         createBuffer("mvp", defaultSettings.maxStaticObjects * 256); // 256 byte align for bind group offsets
     }
 
-    public renderFrame() {
+    public renderFrame(camera: Camera) {
         if (this.context == null) return;
-
-        const now = Date.now();
-        const deltaTime = (now - this.lastFrameMS) / 1000;
-        this.lastFrameMS = now;
 
         const encoder: GPUCommandEncoder = getDevice().createCommandEncoder();
 
@@ -83,14 +69,13 @@ export class WebGPURenderer {
             },
         });
 
-        this.simpleOrbitCam.orbitQuat(this.input.x * deltaTime * 50, this.input.y * deltaTime * 50, this.input.scrollDelta);
-        const [projectionMatrix, viewMatrix] = this.simpleOrbitCam.update();
+        const [projectionMatrix, viewMatrix] = camera.matrices;
 
         const dirlightBuffer = getBuffer("dirLight");
         getQueue().writeBuffer(dirlightBuffer!, 0, this.dirLight.shaderData);
 
         const camBuffer = getBuffer("camera");
-        getQueue().writeBuffer(camBuffer!, 0, this.simpleOrbitCam.shaderData);
+        getQueue().writeBuffer(camBuffer!, 0, camera.shaderData);
 
         // Render meshes
         for (let i = 0; i < this.meshEntityList.length; i++) {

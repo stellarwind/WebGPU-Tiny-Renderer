@@ -4,6 +4,9 @@ import { GLTFLoader } from "./gltf-mesh-loader";
 import { MeshEntity } from "./mesh-entity";
 import { LightEntity, LightType } from "./light";
 import { vec3 } from "wgpu-matrix";
+import { Camera } from "./camera";
+import { Input } from "./input";
+import { OrbitCameraController } from "./orbit-camera-controller";
 // import { createLitMaterial, createUnlitMaterial } from "./material-library";
 // import { Mesh } from "./mesh";
 
@@ -47,13 +50,19 @@ const run = async () => {
 
 export default async () => {
     await run();
+    const camera = new Camera();
+    const input = new Input("viewport");
+    camera.attachController(new OrbitCameraController(input));
     let lastFrameTime = performance.now();
     const renderLoop = () => {
-        const currentFrame = performance.now() - lastFrameTime;
-        lastFrameTime = performance.now();
+        const now = performance.now();
+        const currentFrame = now - lastFrameTime;
+        lastFrameTime = now;
         if (DEBUG) console.log(currentFrame + " ms");
 
-        renderer.renderFrame();
+        // TODO add an updatable component interface, iterate and update all.
+        camera.update(currentFrame / 1000);
+        renderer.renderFrame(camera);
         requestAnimationFrame(renderLoop);
     };
 
